@@ -19,7 +19,7 @@ This application is a chatbot framework that enables users to interact with a sp
   - `nltk`
   - `pyaudio`
   - `whisper`
-  - `pyttsx3`
+  - `gtts`
   - `numpy`
   - `dotenv`
 
@@ -53,7 +53,7 @@ pip install -r requirements.txt
 
 1. **Run the Application**:
    ```bash
-   streamlit run app.py
+   python -m streamlit run chatbot.py
    ```
 
 2. **Using the Interface**:
@@ -68,7 +68,7 @@ pip install -r requirements.txt
 
 ## File Structure
 
-- **`app.py`**: Main application file, initializes components, handles both text and voice queries.
+- **`chatbot.py`**: Main application file, initializes components, handles both text and voice queries.
 - **`data/`**: Directory for storing documents to be queried.
 - **`.env`**: Stores sensitive data, such as API keys.
 
@@ -78,24 +78,11 @@ pip install -r requirements.txt
 - **Custom Retriever**: Combines vector-based and keyword-based retrieval methods for comprehensive results.
 - **Voice Interface**:
   - Whisper is used for audio transcription.
-  - `pyttsx3` provides TTS capabilities to read responses aloud.
-
-## Troubleshooting
-
-- **TTS Not Working**: Ensure that `pyttsx3` is properly initialized and only once per session.
-- **Audio Permissions**: Verify that microphone permissions are granted for voice input.
+  - `gtts` provides TTS capabilities to read responses aloud.
 
 ## Future Enhancements
 
 - **Multilingual Support**: Integrate support for multilingual transcription and response translation.
 - **Advanced Document Preprocessing**: Enable document pre-filtering and enrichment for more specialized document sets.
+- **Add Image/Video Explaining Functionality**: Enabling asking questions from a user uploaded image or video.
 
-## Acknowledgements
-
-- **LLM and Embeddings Provider** for API and model access.
-- **Whisper** for speech recognition.
-- **Streamlit** for user interface.
-
-## License
-
-This project is licensed under the MIT License.
