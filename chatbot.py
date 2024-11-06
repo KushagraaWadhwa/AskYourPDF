@@ -13,30 +13,37 @@ from dotenv import load_dotenv
 import re
 import nltk
 from nltk.corpus import stopwords
-from llama_index.core import SimpleDirectoryReader
+import pyaudio
+import whisper
+import pyttsx3
+import numpy as np
+import tempfile
+from gtts import gTTS
 
 nltk.download('stopwords')
 load_dotenv()
 
+# Initialize the Whisper model for STT and TTS engine
+whisper_model = whisper.load_model("base")
+engine = pyttsx3.init()
+
 st.title("Indian Constitution Chatbot")
 st.write("Ask me questions about the Indian Constitution!")
 
+# Preprocess text for indexing
 def preprocess_text(text):
     text = text.lower()
     text = re.sub(r'[^a-zA-Z0-9\s]', '', text)
     stop_words = set(stopwords.words('english'))
     text = ' '.join([word for word in text.split() if word not in stop_words])
-    text = re.sub(r'\s+', ' ', text).strip()
+    return text.strip()
 
-    return text
-
-# Function to load documents and set up the query engine
+# Function to load documents and initialize query engine
 def initialize_query_engine():
     if 'documents' not in st.session_state:
         documents = SimpleDirectoryReader('data').load_data()
         for doc in documents:
             doc.text = preprocess_text(doc.text)
-        
         st.session_state['documents'] = documents
     else:
         documents = st.session_state['documents']
@@ -49,18 +56,16 @@ def initialize_query_engine():
 
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-    # Initialize embeddings and LLM with the provided API key only once
+    # Initialize embeddings and LLM
     if 'embed_model' not in st.session_state:
-        st.session_state['embed_model'] = GeminiEmbedding(
-            model_name="models/embedding-001", api_key=GEMINI_API_KEY
-        )
+        st.session_state['embed_model'] = GeminiEmbedding(model_name="models/embedding-001", api_key=GEMINI_API_KEY)
         Settings.embed_model = st.session_state['embed_model']
         
     if 'llm' not in st.session_state:
         st.session_state['llm'] = Gemini(api_key=GEMINI_API_KEY)
         Settings.llm = st.session_state['llm']
 
-    # Set up the storage context and add documents
+    # Initialize storage context and create indexes
     if 'storage_context' not in st.session_state:
         storage_context = StorageContext.from_defaults()
         storage_context.docstore.add_documents(nodes)
@@ -68,63 +73,105 @@ def initialize_query_engine():
     else:
         storage_context = st.session_state['storage_context']
 
-    # Create indexes
     vector_index = VectorStoreIndex(nodes, storage_context=storage_context)
     keyword_index = SimpleKeywordTableIndex(nodes, storage_context=storage_context)
 
-    # Set up retrievers
     vector_retriever = VectorIndexRetriever(index=vector_index, similarity_top_k=5)
     keyword_retriever = KeywordTableSimpleRetriever(index=keyword_index, top_k=5)
 
-    # Define a custom retriever to combine vector and keyword retrievers
+    # Custom retriever to combine vector and keyword retrievers
     class CustomRetriever(BaseRetriever):
-        def __init__(self, vector_retriever: VectorIndexRetriever, keyword_retriever: KeywordTableSimpleRetriever, mode: str = "AND") -> None:
+        def __init__(self, vector_retriever, keyword_retriever, mode="AND"):
             self._vector_retriever = vector_retriever
             self._keyword_retriever = keyword_retriever
-            if mode not in ("AND", "OR"):
-                raise ValueError("Invalid mode.")
-            self._mode = mode
+            self._mode = mode if mode in ("AND", "OR") else "AND"
             super().__init__()
 
-        def _retrieve(self, query_bundle: QueryBundle) -> List[NodeWithScore]:
+        def _retrieve(self, query_bundle):
             vector_nodes = self._vector_retriever.retrieve(query_bundle)
             keyword_nodes = self._keyword_retriever.retrieve(query_bundle)
-
-            # Merge nodes based on selected mode
             vector_ids = {n.node.node_id for n in vector_nodes}
             keyword_ids = {n.node.node_id for n in keyword_nodes}
 
             combined_dict = {n.node.node_id: n for n in vector_nodes}
             combined_dict.update({n.node.node_id: n for n in keyword_nodes})
 
-            retrieve_ids = (
-                vector_ids.intersection(keyword_ids) if self._mode == "AND" 
-                else vector_ids.union(keyword_ids)
-            )
-            
-            retrieve_nodes = [combined_dict[r_id] for r_id in retrieve_ids]
-            return retrieve_nodes
+            retrieve_ids = vector_ids.intersection(keyword_ids) if self._mode == "AND" else vector_ids.union(keyword_ids)
+            return [combined_dict[r_id] for r_id in retrieve_ids]
+
     custom_retriever = CustomRetriever(vector_retriever, keyword_retriever)
-
-
     response_synthesizer = get_response_synthesizer()
-    custom_query_engine = RetrieverQueryEngine(
-        retriever=custom_retriever,
-        response_synthesizer=response_synthesizer,
-    )
-    return custom_query_engine
 
+    return RetrieverQueryEngine(retriever=custom_retriever, response_synthesizer=response_synthesizer)
+
+# Transcribe audio using Whisper
+def transcribe_audio():
+    audio = pyaudio.PyAudio()
+    stream = audio.open(format=pyaudio.paInt16, channels=1, rate=16000, input=True, frames_per_buffer=1024)
+    st.write("Listening for your question...")
+
+    frames = []
+    for _ in range(0, int(16000 / 1024 * 5)):
+        data = stream.read(1024)
+        frames.append(data)
+
+    stream.stop_stream()
+    stream.close()
+    audio.terminate()
+
+    audio_data = b"".join(frames)
+    audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
+    transcription = whisper_model.transcribe(audio_np)
+    return transcription["text"]
+
+# Text-to-speech output using gTTS
+@st.cache_resource
+def text_to_speech(text):
+    try:
+        tts = gTTS(text=text, lang='en')
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
+            temp_file = fp.name
+            tts.save(temp_file)
+        return temp_file
+    except Exception as e:
+        st.error(f"Error in TTS: {e}")
+        return None
+
+# Load Constitution data and initialize query engine
 if 'custom_query_engine' not in st.session_state:
-    with st.spinner("Hi! Let me read the constitution📖 first, please wait for a few minutes⌛..."):
-        # Initialize the query engine and store it in session state
+    with st.spinner("Loading Constitution data, please wait..."):
         st.session_state['custom_query_engine'] = initialize_query_engine()
-    st.success("Document processing completed! Feel free to ask questions now.")
+    st.success("Ready! You can now ask questions.")
 
-query = st.text_input("Enter your question:")
+# Select input method
+if 'input_method_selected' not in st.session_state:
+    st.session_state['input_method_selected'] = None
 
+input_method = st.radio("Select input method:", ("Text", "Voice"), key="input_method")
+
+query = None
+if input_method == "Text":
+    query = st.text_input("Enter your question:")
+elif input_method == "Voice":
+    if st.button("Record Question"):
+        with st.spinner("Recording..."):
+            query = transcribe_audio()
+        st.write(f"Transcribed Text: {query}")
+
+# Query the Constitution chatbot if a query is provided
 if query:
-    with st.spinner("Hmm! Good question, looking for your answer👀🔍..."):
+    with st.spinner("Searching for an answer..."):
         custom_query_engine = st.session_state['custom_query_engine']
         result = custom_query_engine.query(query)
+        response = result.response
         st.write("Response:")
-        st.write(result.response) 
+        st.write(response)
+        
+        # Automatically generate and play TTS if input method is Voice
+        if input_method == "Voice":
+            audio_file = text_to_speech(response)
+            if audio_file:
+                with open(audio_file, "rb") as f:
+                    audio_bytes = f.read()
+                st.audio(audio_bytes, format='audio/mp3')
+                os.remove(audio_file)
