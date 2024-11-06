@@ -41,12 +41,6 @@ pip install -r requirements.txt
     GEMINI_API_KEY=your_api_key
     ```
 
-3. Download NLTK stopwords (optional for preprocessing):
-    ```python
-    import nltk
-    nltk.download('stopwords')
-    ```
-
 4. Prepare audio hardware for voice input.
 
 ## Usage
