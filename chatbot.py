@@ -52,7 +52,7 @@ def initialize_query_engine():
     else:
         nodes = st.session_state['nodes']
 
-    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+    GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 
     # Initialize embeddings and LLM
     if 'embed_model' not in st.session_state:
