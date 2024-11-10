@@ -25,8 +25,8 @@ load_dotenv()
 whisper_model = whisper.load_model("base")
 engine = pyttsx3.init()
 
-st.title("Indian Constitution Chatbot")
-st.write("Ask me questions about the Indian Constitution!")
+st.title("Your Personal PDF Chatbot")
+st.write("Ask me questions about your PDF!")
 
 # Preprocess text for indexing
 def preprocess_text(text):
@@ -135,9 +135,9 @@ def text_to_speech(text):
         st.error(f"Error in TTS: {e}")
         return None
 
-# Load Constitution data and initialize query engine
+# Load data and initialize query engine
 if 'custom_query_engine' not in st.session_state:
-    with st.spinner("Loading Constitution data, please wait..."):
+    with st.spinner("Loading the data, please wait..."):
         st.session_state['custom_query_engine'] = initialize_query_engine()
     st.success("Ready! You can now ask questions.")
 
@@ -156,7 +156,7 @@ elif input_method == "Voice":
             query = transcribe_audio()
         st.write(f"Transcribed Text: {query}")
 
-# Query the Constitution chatbot if a query is provided
+# Query the chatbot if a query is provided
 if query:
     with st.spinner("Searching for an answer..."):
         custom_query_engine = st.session_state['custom_query_engine']
